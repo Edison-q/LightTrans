@@ -1,0 +1,14 @@
+[project]
+name = "lighttrans"
+version = "0.1.0"
+description = "局域网双向文字/图片/文件快递站"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "qrcode>=7.4",
+    "pillow>=10.0",
+    "pillow-heif>=0.13",
+    "zeroconf>=0.130",
+]

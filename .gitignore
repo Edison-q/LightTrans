@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime data (privacy - never commit these)
+history.json
+token.txt
+server.log
+接收文件/
+icon.png
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#06b6d4">
+<link rel="icon" href="/icon.png">
+<title>LightTrans · 验证</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  background:#ecfeff;display:flex;align-items:center;justify-content:center;
+  height:100vh;height:100dvh;padding:24px;
+}
+.card{
+  background:#fff;border:1px solid #e0f2f5;border-radius:24px;padding:36px 28px;
+  max-width:360px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(6,182,212,.12);
+}
+.logo{
+  width:64px;height:64px;border-radius:18px;margin:0 auto 16px;
+  background:linear-gradient(135deg,#0a2a4a,#06b6d4);display:flex;align-items:center;justify-content:center;
+}
+.logo svg{width:32px;height:32px;fill:#fff;}
+h1{font-size:19px;margin-bottom:6px;color:#111827;}
+p{font-size:13px;color:#6b7280;margin-bottom:20px;line-height:1.7;}
+input{
+  width:100%;border:1px solid #e0f2f5;border-radius:14px;padding:12px 14px;font-size:16px;
+  text-align:center;outline:none;background:#f8fafc;letter-spacing:1px;
+}
+input:focus{border-color:#06b6d4;background:#fff;}
+button{
+  width:100%;margin-top:12px;border:none;border-radius:14px;padding:13px 0;font-size:15px;
+  font-weight:700;color:#fff;cursor:pointer;background:linear-gradient(135deg,#06b6d4,#14b8a6);
+}
+button:active{opacity:.85;}
+#err{color:#ef4444;font-size:13px;margin-top:12px;min-height:18px;}
+.hint{margin-top:16px;font-size:11px;color:#9ca3af;line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 1 L14.5 9.5 L23 12 L14.5 14.5 L12 23 L9.5 14.5 L1 12 L9.5 9.5 Z"/></svg></div>
+  <h1>LightTrans</h1>
+  <p>请输入访问令牌<br>（在电脑页面点「连接手机」查看）</p>
+  <input id="tok" type="text" placeholder="令牌" autocomplete="off" autocapitalize="off" autocorrect="off">
+  <button id="go">进入</button>
+  <div id="err"></div>
+  <div class="hint">输入一次后自动记住，下次直接打开即可</div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+async function go(){
+  const v=$('#tok').value.trim();
+  if(!v)return;
+  try{
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:v})});
+    if(r.ok){location.href='/';}
+    else{$('#err').textContent='令牌不正确，请检查后重试';}
+  }catch(e){$('#err').textContent='连接失败，请确认电脑服务已启动';}
+}
+$('#go').onclick=go;
+$('#tok').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+</script>
+</body>
+</html>

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LightTrans">
+<meta name="theme-color" content="#06b6d4">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="icon" href="/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>LightTrans</title>
+<style>
+:root{
+  --bg:#ecfeff; --card:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e0f2f5;
+  --a1:#06b6d4; --a2:#14b8a6; --danger:#ef4444; --ok:#22c55e;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg); color:var(--ink); height:100vh; height:100dvh;
+  display:flex; flex-direction:column; overflow:hidden;
+  touch-action:manipulation;
+}
+.wrap{max-width:760px;margin:0 auto;width:100%;flex:1;display:flex;flex-direction:column;min-height:0;}
+header{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;
+  padding-top:calc(10px + env(safe-area-inset-top));
+  background:var(--card);border-bottom:1px solid var(--line);flex:none;
+}
+.logo{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0a2a4a,#06b6d4);color:#fff;flex:none;}
+.logo svg{width:19px;height:19px;}
+.brand{font-weight:700;font-size:16px;line-height:1.2;}
+.sub{font-size:11px;color:var(--muted);}
+.spacer{flex:1;}
+.badge{
+  font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--bg);cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;flex:none;
+}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);transition:background .3s;}
+.badge.off .dot{background:var(--danger);}
+.btn{
+  border:none;cursor:pointer;font-size:13px;padding:7px 12px;border-radius:10px;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff;font-weight:600;flex:none;
+}
+.btn:active{opacity:.8;}
+.btn.ghost{background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500;}
+#clrbtn{font-size:12px;padding:6px 8px;}
+#msgs{flex:1;overflow-y:auto;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain;}
+#msgs.dragging{outline:3px dashed var(--a1);outline-offset:-6px;background:rgba(6,182,212,.05);}
+.msg{display:flex;flex-direction:column;max-width:86%;animation:pop .18s ease;}
+@media (hover:none){
+  /* 触屏端屏蔽系统文字选择（长按用于删除/操作面板），电脑端保留正常选字 */
+  .msg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+}
+.msg.me{align-self:flex-end;align-items:flex-end;}
+@keyframes pop{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+.bubble{
+  padding:10px 14px;border-radius:16px;background:var(--card);border:1px solid var(--line);
+  font-size:15px;line-height:1.5;word-break:break-word;white-space:pre-wrap;cursor:pointer;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+.msg.me .bubble{background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff;border:none;}
+.meta{font-size:11px;color:var(--muted);margin-top:4px;padding:0 4px;display:flex;align-items:center;gap:6px;}
+.delbtn{
+  opacity:0;border:none;background:transparent;color:var(--muted);font-size:13px;
+  cursor:pointer;padding:2px 7px;border-radius:7px;transition:opacity .15s;line-height:1;
+}
+.delbtn:hover{background:rgba(239,68,68,.1);color:var(--danger);}
+.msg:hover .delbtn{opacity:1;}
+@media (hover:none){.delbtn{display:none;}}
+.filecard{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04);max-width:320px;}
+.filecard .imgbox img{display:block;width:100%;max-height:280px;object-fit:cover;cursor:pointer;background:#f0fdfb;}
+.filecard .row{display:flex;align-items:center;gap:10px;padding:10px 12px;}
+.filecard .ficon{width:38px;height:38px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:19px;flex:none;}
+.filecard .finfo{flex:1;min-width:0;}
+.filecard .fname{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.filecard .fsize{font-size:11px;color:var(--muted);margin-top:2px;}
+.filecard a.dl{font-size:12px;padding:6px 10px;text-decoration:none;}
+.welcome{text-align:center;padding:46px 16px;color:var(--muted);}
+.wicon{font-size:44px;}
+.wtitle{font-size:17px;font-weight:700;color:var(--ink);margin:10px 0 6px;}
+.wtext{font-size:13px;line-height:2;}
+footer{
+  background:var(--card);border-top:1px solid var(--line);flex:none;
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  display:flex;gap:8px;align-items:flex-end;
+}
+footer textarea{
+  flex:1;border:1px solid var(--line);border-radius:14px;padding:9px 12px;font-size:16px;
+  font-family:inherit;resize:none;max-height:120px;background:var(--bg);outline:none;line-height:1.4;
+}
+footer textarea:focus{border-color:var(--a1);background:#fff;}
+.iconbtn{
+  width:42px;height:42px;border-radius:14px;border:1px solid var(--line);background:var(--bg);
+  cursor:pointer;font-size:19px;flex:none;display:flex;align-items:center;justify-content:center;line-height:1;
+}
+#sendbtn{width:auto;padding:0 16px;height:42px;font-size:14px;}
+#toast{
+  position:fixed;left:50%;bottom:130px;transform:translateX(-50%);
+  background:rgba(17,24,39,.92);color:#fff;padding:9px 18px;border-radius:999px;font-size:13px;
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:80vw;
+}
+#toast.show{opacity:1;}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:40;padding:20px;}
+#modal.show{display:flex;}
+.modal-card{background:#fff;border-radius:20px;padding:22px;max-width:340px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.2);}
+.modal-card h3{margin:0 0 12px;font-size:17px;}
+#qr{width:200px;height:200px;border-radius:12px;}
+.url-line{font-size:12px;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:8px;padding:7px 10px;margin:10px 0;white-space:pre-line;}
+.modal-card ol{text-align:left;font-size:13px;color:var(--muted);padding-left:18px;line-height:1.9;margin:8px 0 16px;}
+#viewer{
+  position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:60;display:none;
+  align-items:center;justify-content:center;
+  padding:calc(20px + env(safe-area-inset-top)) 12px calc(20px + env(safe-area-inset-bottom));
+}
+#viewer.show{display:flex;}
+#viewer img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;}
+#vclose{
+  position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;
+  width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;
+  border:none;font-size:18px;cursor:pointer;line-height:1;
+}
+#vhint{
+  position:absolute;bottom:calc(18px + env(safe-area-inset-bottom));left:0;right:0;
+  text-align:center;color:rgba(255,255,255,.55);font-size:12px;pointer-events:none;
+}
+#confirm{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:70;padding:24px;}
+#confirm.show{display:flex;}
+.cf-card{background:#fff;border-radius:18px;padding:22px 20px;max-width:320px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.2);}
+#cftext{font-size:14px;line-height:1.7;white-space:pre-line;color:var(--ink);margin-bottom:18px;}
+.cf-btns{display:flex;gap:10px;}
+.cf-btns .btn{flex:1;padding:10px 0;font-size:14px;}
+/* 多选批量删除 */
+.msg .selbox{
+  display:none;position:absolute;left:2px;top:50%;transform:translateY(-50%);
+  width:22px;height:22px;border-radius:50%;border:2px solid #b8c4cc;background:#fff;
+}
+body.sel .msg{max-width:100%;position:relative;padding-left:36px;cursor:pointer;}
+body.sel .msg .selbox{display:block;}
+body.sel .msg.selected .selbox{background:var(--a1);border-color:var(--a1);}
+body.sel .msg.selected .selbox::after{content:'';position:absolute;left:5px;top:1px;width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+body.sel .msg .delbtn{display:none!important;}
+body.sel .msg .bubble{cursor:default;}
+#selbar{
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(14px + env(safe-area-inset-bottom));
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:8px 10px;display:none;align-items:center;gap:8px;z-index:35;
+  box-shadow:0 6px 24px rgba(0,0,0,.12);
+}
+body.sel #selbar{display:flex;}
+body.sel footer{display:none;}
+.selinfo{font-size:13px;color:var(--muted);white-space:nowrap;}
+.selinfo b{color:var(--a1);}
+.btn:disabled{opacity:.45;cursor:default;}
+#seldel{background:linear-gradient(135deg,#ef4444,#f97316);}
+/* 长按操作面板 */
+#actions{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:45;align-items:flex-end;justify-content:center;}
+#actions.show{display:flex;}
+.as-card{
+  width:100%;max-width:520px;background:#fff;border-radius:20px 20px 0 0;
+  padding:10px 12px calc(14px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:2px;animation:slideup .18s ease;
+}
+@keyframes slideup{from{transform:translateY(30%);opacity:.5;}to{transform:none;opacity:1;}}
+.as-btn{
+  border:none;background:transparent;font-size:16px;padding:14px 0;border-radius:10px;
+  cursor:pointer;color:var(--a1);font-weight:600;border-bottom:1px solid #f1f5f9;
+}
+.as-btn:active{background:#f8fafc;}
+.as-btn.danger{color:var(--danger);}
+#ascancel{
+  border:none;background:#f1f5f9;font-size:16px;padding:14px 0;border-radius:10px;
+  cursor:pointer;color:var(--muted);font-weight:600;margin-top:8px;
+}
+/* 手机端适配（iPhone 逻辑分辨率 440x956pt 级别） */
+@media (max-width:600px){
+  #qrbtn{display:none;}
+  .sub{display:none;}
+  header{gap:6px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top));}
+  .logo{width:30px;height:30px;border-radius:8px;}
+  .logo svg{width:17px;height:17px;}
+  .brand{font-size:15px;}
+  .badge{font-size:11px;padding:4px 9px;}
+  .btn{font-size:12px;padding:6px 10px;}
+  #msgs{padding:12px 12px 4px;gap:8px;}
+  .msg{max-width:88%;}
+  .bubble{padding:9px 13px;font-size:15px;}
+  .meta{font-size:10px;}
+  footer{padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:6px;}
+  .iconbtn{width:40px;height:40px;border-radius:12px;font-size:18px;}
+  #sendbtn{height:40px;padding:0 14px;font-size:13px;}
+  .filecard{max-width:300px;}
+  .filecard .fname{font-size:13px;}
+  #toast{bottom:110px;}
+  #selbar{gap:6px;padding:7px 8px;}
+  .selinfo{font-size:12px;}
+}
+#vclose2{
+  position:absolute;bottom:calc(58px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  padding:10px 26px;border-radius:999px;font-size:14px;font-weight:600;
+  background:rgba(255,255,255,.18);color:#fff;border:none;cursor:pointer;
+}
+#vclose2:active{background:rgba(255,255,255,.32);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1 L14.5 9.5 L23 12 L14.5 14.5 L12 23 L9.5 14.5 L1 12 L9.5 9.5 Z"/></svg></div>
+    <div>
+      <div class="brand">LightTrans</div>
+      <div class="sub" id="urlsub">局域网快递站</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="badge" id="badge" title="点击给这台设备改名"><span class="dot"></span><span id="devname">设备</span></div>
+    <button class="btn ghost" id="selbtn" title="批量选择删除"><span class="ic">☑</span><span class="tx"> 多选</span></button>
+    <button class="btn ghost" id="clrbtn" title="清空本设备看到的记录"><span class="ic">🗑</span><span class="tx"> 清空</span></button>
+    <button class="btn ghost" id="qrbtn"><span class="tx">连接手机</span></button>
+  </header>
+  <main id="msgs"></main>
+  <footer>
+    <label class="iconbtn" for="filein" title="发送图片/文件">➕</label>
+    <input type="file" id="filein" multiple hidden
+      accept="image/*,video/*,audio/*,text/*,application/*,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt,.md">
+    <textarea id="input" rows="1" placeholder="输入文字，Enter 发送（Shift+Enter 换行）"></textarea>
+    <button class="btn" id="sendbtn">发送</button>
+  </footer>
+</div>
+<div id="selbar">
+  <button class="btn ghost" id="selcancel">取消</button>
+  <div class="selinfo">已选 <b id="selcount">0</b> 条</div>
+  <button class="btn ghost" id="selall">全选</button>
+  <button class="btn" id="seldel">删除</button>
+</div>
+<div id="toast"></div>
+<div id="modal">
+  <div class="modal-card">
+    <h3>📱 手机连接电脑</h3>
+    <img id="qr" src="/qr.png" alt="二维码" loading="lazy">
+    <div class="url-line" id="urltext">加载中…</div>
+    <div class="url-line" id="tokentext"></div>
+    <ol>
+      <li>iPhone 相机扫二维码，点打开链接</li>
+      <li>点 Safari 底部「分享」→「添加到主屏幕」</li>
+      <li>以后点主屏幕图标即用，无需再扫码</li>
+    </ol>
+    <button class="btn" onclick="document.getElementById('modal').classList.remove('show')">知道了</button>
+  </div>
+</div>
+<div id="viewer">
+  <button id="vclose">✕</button>
+  <img id="vimg" alt="">
+  <button id="vclose2">✕ 关闭</button>
+  <div id="vhint">点空白处关闭 · 长按图片可保存</div>
+</div>
+<div id="actions">
+  <div class="as-card">
+    <button class="as-btn" id="as1">复制</button>
+    <button class="as-btn" id="as2">选择文字</button>
+    <button class="as-btn danger" id="as3">删除</button>
+    <button id="ascancel">取消</button>
+  </div>
+</div>
+<div id="confirm">
+  <div class="cf-card">
+    <div id="cftext"></div>
+    <div class="cf-btns">
+      <button class="btn ghost" id="cfcancel">取消</button>
+      <button class="btn" id="cfok">确定</button>
+    </div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const msgsEl=$('#msgs'), inputEl=$('#input'), badge=$('#badge'), devnameEl=$('#devname');
+
+const state={seq:0,epoch:null,device:localStorage.getItem('lt_device')||defaultDevice()};
+function defaultDevice(){const ua=navigator.userAgent;return /iPhone|iPad|iPod/i.test(ua)?'手机':/Android/i.test(ua)?'安卓':'电脑';}
+devnameEl.textContent=state.device;
+
+/* 本设备已删除的消息（只删单边） */
+const DEL_KEY='lt_deleted';
+let deletedSeqs=(()=>{try{return new Set(JSON.parse(localStorage.getItem(DEL_KEY)||'[]').map(Number));}catch(e){return new Set();}})();
+function saveDeleted(){localStorage.setItem(DEL_KEY,JSON.stringify([...deletedSeqs].slice(-1000)));}
+function markDeleted(seq){deletedSeqs.add(seq);saveDeleted();}
+
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+function fmtSize(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';return (b/1048576).toFixed(1)+' MB';}
+function fmtTime(t){const d=new Date(t*1000);return d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});}
+function toast(t){const x=$('#toast');x.textContent=t;x.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>x.classList.remove('show'),1600);}
+
+function fileIcon(name){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  if(['jpg','jpeg','png','gif','webp','heic'].includes(ext))return '🖼️';
+  if(['mp4','mov','avi','mkv'].includes(ext))return '🎬';
+  if(['mp3','wav','flac','m4a'].includes(ext))return '🎵';
+  if(['zip','rar','7z','tar','gz'].includes(ext))return '🗜️';
+  if(ext==='pdf')return '📕';
+  if(['doc','docx'].includes(ext))return '📘';
+  if(['xls','xlsx','csv'].includes(ext))return '📗';
+  if(['ppt','pptx'].includes(ext))return '📙';
+  if(['txt','md'].includes(ext))return '📃';
+  return '📦';
+}
+
+/* 全屏图片预览（修复 iOS 独立窗口退不出去的问题） */
+const viewer=$('#viewer'), vimg=$('#vimg');
+function openViewer(src){vimg.src=src;viewer.classList.add('show');document.body.style.overflow='hidden';}
+function closeViewer(){viewer.classList.remove('show');document.body.style.overflow='';}
+viewer.addEventListener('click',closeViewer);
+$('#vclose').addEventListener('click',e=>{e.stopPropagation();closeViewer();});
+$('#vclose2').addEventListener('click',e=>{e.stopPropagation();closeViewer();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeViewer();});
+
+/* 应用内确认弹窗（跨端一致，避免系统弹窗差异） */
+const cfEl=$('#confirm');
+function showConfirm(msg){
+  return new Promise(res=>{
+    $('#cftext').textContent=msg;
+    cfEl.classList.add('show');
+    cfEl._resolve=res;
+  });
+}
+$('#cfok').onclick=()=>{cfEl.classList.remove('show');if(cfEl._resolve)cfEl._resolve(true);};
+$('#cfcancel').onclick=()=>{cfEl.classList.remove('show');if(cfEl._resolve)cfEl._resolve(false);};
+
+let suppressClick=0;
+async function confirmDelete(seq,node){
+  const ok=await showConfirm('删除这条消息？\n（仅从本设备移除，对方设备不受影响）');
+  if(!ok)return;
+  markDeleted(seq);
+  suppressClick=Date.now()+1000;
+  if(node)node.remove();
+  toast('已删除（仅本设备）');
+  if(!msgsEl.querySelector('.msg')){haveMsgs=false;showWelcome();}
+}
+function attachLongPress(node,m){
+  let timer=null;
+  const cancel=()=>{if(timer){clearTimeout(timer);timer=null;}};
+  node.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch')return;
+    if(selMode)return;
+    if(node.dataset.seltext)return;
+    timer=setTimeout(()=>{
+      timer=null;
+      showActions(node,m);
+    },550);
+  });
+  ['pointerup','pointermove','pointercancel','touchend'].forEach(ev=>node.addEventListener(ev,cancel));
+}
+
+/* 长按操作面板：复制 / 选择文字 / 下载 / 删除 */
+let asTarget=null;
+const asEl=$('#actions');
+function showActions(node,m){
+  asTarget={node,m};
+  const isText=m.type==='text';
+  const isImg=m.type==='file'&&(m.mime||'').startsWith('image/');
+  const b1=$('#as1'),b2=$('#as2');
+  b1.textContent=isText?'复制':(isImg?'查看图片':'下载');
+  b2.textContent=isText?'选择文字':'';
+  b2.style.display=isText?'':'none';
+  asEl.classList.add('show');
+}
+function hideActions(){asEl.classList.remove('show');asTarget=null;}
+asEl.addEventListener('click',e=>{if(e.target===asEl)hideActions();});
+$('#ascancel').onclick=hideActions;
+$('#as1').onclick=()=>{
+  const t=asTarget;if(!t)return;
+  hideActions();
+  if(t.m.type==='text'){copyText(t.m.text);}
+  else if((t.m.mime||'').startsWith('image/')){
+    openViewer('/api/files/'+encodeURIComponent(t.m.id));
+    toast('长按图片即可保存到相册');
+  }else{
+    location.href='/api/files/'+encodeURIComponent(t.m.id);
+  }
+};
+$('#as2').onclick=()=>{
+  const t=asTarget;if(!t)return;
+  hideActions();
+  enableTextSelect(t.node);
+};
+$('#as3').onclick=()=>{
+  const t=asTarget;if(!t)return;
+  hideActions();
+  confirmDelete(t.m.seq,t.node);
+};
+
+/* 临时开启单条消息的原生文字选择（部分复制），点别处自动退出 */
+function enableTextSelect(node){
+  const bs=[...node.querySelectorAll('.bubble')];
+  if(!bs.length)return;
+  bs.forEach(b=>{
+    b.style.webkitUserSelect='text';
+    b.style.userSelect='text';
+    b.style.webkitTouchCallout='default';
+  });
+  node.dataset.seltext='1';
+  toast('再长按这段文字即可选择');
+  const off=e=>{
+    if(node.contains(e.target))return;
+    bs.forEach(b=>{
+      b.style.webkitUserSelect='';
+      b.style.userSelect='';
+      b.style.webkitTouchCallout='';
+    });
+    delete node.dataset.seltext;
+    document.removeEventListener('pointerdown',off);
+  };
+  setTimeout(()=>document.addEventListener('pointerdown',off),100);
+}
+
+function buildMsg(m){
+  const me=m.sender===state.device;
+  const wrap=el('div','msg'+(me?' me':''));
+  wrap.dataset.seq=m.seq;
+  wrap.onclick=e=>{
+    if(!selMode)return;
+    if(e.target.closest('a,button'))return;
+    toggleSel(wrap);
+  };
+  if(m.type==='text'){
+    const b=el('div','bubble',m.text);
+    b.title='点击复制';
+    b.onclick=()=>{if(selMode)return;if(Date.now()<suppressClick)return;copyText(m.text);};
+    wrap.appendChild(b);
+  }else{
+    const card=el('div','filecard');
+    const isImg=(m.mime||'').startsWith('image/');
+    if(isImg){
+      const box=el('div','imgbox');
+      const img=el('img');img.loading='lazy';
+      img.src='/api/files/'+encodeURIComponent(m.id);
+      img.alt=m.name;
+      img.onclick=()=>{if(selMode)return;openViewer(img.src);};
+      box.appendChild(img);card.appendChild(box);
+    }
+    const row=el('div','row');
+    row.appendChild(el('div','ficon',fileIcon(m.name)));
+    const info=el('div','finfo');
+    info.appendChild(el('div','fname',m.name));
+    info.appendChild(el('div','fsize',fmtSize(m.size)+(isImg?' · 点图放大':' · 点右侧下载')));
+    row.appendChild(info);
+    if(!isImg){
+      const a=el('a','btn dl','下载');
+      a.href='/api/files/'+encodeURIComponent(m.id);
+      a.download=m.name;
+      row.appendChild(a);
+    }
+    card.appendChild(row);wrap.appendChild(card);
+  }
+  const who=me?'我':(m.sender||'对方');
+  const meta=el('div','meta');
+  meta.appendChild(el('span',null,who+' · '+fmtTime(m.time)));
+  const db=el('button','delbtn','✕');
+  db.title='删除这条消息（仅本设备）';
+  db.onclick=e=>{e.stopPropagation();confirmDelete(m.seq,wrap);};
+  meta.appendChild(db);
+  wrap.appendChild(meta);
+  wrap.appendChild(el('div','selbox'));
+  attachLongPress(wrap,m);
+  return wrap;
+}
+
+let haveMsgs=false;
+function showWelcome(){
+  if(haveMsgs)return;
+  const c=el('div','welcome');
+  c.innerHTML='<div class="wicon">✨</div>'+
+    '<div class="wtitle">LightTrans 已就绪</div>'+
+    '<div class="wtext">两端已连上，开始互传吧<br>· 下方输入文字，Enter 发送<br>· 点 ➕ 选择照片或文件<br>· 点击文字气泡即可复制<br>· 手机长按消息删除单条，点「☑ 多选」可批量删除</div>';
+  msgsEl.appendChild(c);
+}
+function appendMsg(m){
+  if(!haveMsgs){msgsEl.innerHTML='';haveMsgs=true;}
+  msgsEl.appendChild(buildMsg(m));
+  msgsEl.scrollTop=msgsEl.scrollHeight;
+}
+function clearList(){msgsEl.innerHTML='';haveMsgs=false;showWelcome();}
+
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);toast('已复制 ✓');}
+  catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);ta.focus();ta.select();
+    try{document.execCommand('copy');toast('已复制 ✓');}
+    catch(_){toast('复制失败，请长按选择');}
+    ta.remove();
+  }
+}
+
+async function poll(){
+  try{
+    const r=await fetch('/api/messages?since='+state.seq+(state.epoch!==null?'&epoch='+state.epoch:''));
+    const d=await r.json();
+    badge.classList.remove('off');
+    if(state.epoch===null){
+      state.epoch=d.epoch;state.seq=d.current_seq;
+      (d.items||[]).forEach(m=>{if(!deletedSeqs.has(m.seq))appendMsg(m);});
+    }else if(d.epoch!==state.epoch){
+      state.epoch=d.epoch;state.seq=d.current_seq;
+      clearList();(d.items||[]).forEach(m=>{if(!deletedSeqs.has(m.seq))appendMsg(m);});
+    }else if(d.items&&d.items.length){
+      d.items.forEach(m=>{
+        if(!deletedSeqs.has(m.seq))appendMsg(m);
+        state.seq=Math.max(state.seq,m.seq);
+      });
+    }
+  }catch(e){badge.classList.add('off');}
+}
+
+async function sendText(){
+  const t=inputEl.value.trim();
+  if(!t)return;
+  inputEl.value='';autogrow();
+  try{
+    const r=await fetch('/api/text',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:t,sender:state.device})});
+    if(!r.ok)throw 0;
+    const m=await r.json();
+    state.seq=Math.max(state.seq,m.seq);
+    appendMsg(m);
+  }catch(e){toast('发送失败，请检查电脑服务是否在线');inputEl.value=t;}
+}
+
+async function sendFiles(files){
+  if(!files||!files.length)return;
+  const fd=new FormData();
+  for(const f of files)fd.append('files',f);
+  fd.append('sender',state.device);
+  toast(files.length>1?'正在发送 '+files.length+' 个文件…':'正在发送…');
+  try{
+    const r=await fetch('/api/upload',{method:'POST',body:fd});
+    if(!r.ok)throw 0;
+    const msgs=await r.json();
+    msgs.forEach(m=>{state.seq=Math.max(state.seq,m.seq);appendMsg(m);});
+    toast('已发送 ✓');
+  }catch(e){toast('发送失败，请重试');}
+}
+
+async function clearHistory(){
+  const ok=await showConfirm('清空本设备看到的全部记录？\n（对方设备不受影响，已存文件不删除）');
+  if(!ok)return;
+  msgsEl.querySelectorAll('.msg').forEach(n=>{
+    const s=+n.dataset.seq;
+    if(s)deletedSeqs.add(s);
+  });
+  saveDeleted();
+  clearList();
+  toast('已清空（仅本设备）');
+}
+
+function autogrow(){
+  inputEl.style.height='auto';
+  inputEl.style.height=Math.min(inputEl.scrollHeight,120)+'px';
+}
+
+inputEl.addEventListener('input',autogrow);
+inputEl.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();sendText();}
+});
+$('#sendbtn').onclick=sendText;
+$('#filein').addEventListener('change',e=>{
+  if(e.target.files.length)sendFiles(e.target.files);
+  e.target.value='';
+});
+$('#clrbtn').onclick=clearHistory;
+
+badge.onclick=()=>{
+  const n=prompt('这台设备显示的名字：',state.device);
+  if(n&&n.trim()){
+    state.device=n.trim();
+    localStorage.setItem('lt_device',state.device);
+    devnameEl.textContent=state.device;
+  }
+};
+
+$('#qrbtn').onclick=async()=>{
+  $('#modal').classList.add('show');
+  try{
+    const s=await (await fetch('/api/state')).json();
+    $('#urltext').textContent=s.phone_url+'?k='+s.token+'\n备用: '+s.ip_url+'?k='+s.token;
+    $('#tokentext').textContent='访问令牌: '+s.token;
+  }catch(e){}
+};
+$('#modal').onclick=e=>{if(e.target.id==='modal')e.target.classList.remove('show');};
+
+(async()=>{
+  try{
+    const s=await (await fetch('/api/state')).json();
+    $('#urlsub').textContent='手机访问: '+s.phone_url.replace('http://','');
+  }catch(e){}
+})();
+
+let dragDepth=0;
+document.addEventListener('dragenter',e=>{
+  if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes('Files')){
+    dragDepth++;msgsEl.classList.add('dragging');
+  }
+});
+document.addEventListener('dragleave',e=>{
+  if(--dragDepth<=0){dragDepth=0;msgsEl.classList.remove('dragging');}
+});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{
+  e.preventDefault();dragDepth=0;msgsEl.classList.remove('dragging');
+  if(e.dataTransfer&&e.dataTransfer.files.length)sendFiles(e.dataTransfer.files);
+});
+
+/* 多选批量删除 */
+let selMode=false;
+const selSeqs=new Set();
+function setSelMode(on){
+  selMode=on;
+  document.body.classList.toggle('sel',on);
+  if(!on)selSeqs.clear();
+  updateSelbar();
+  if(on)inputEl.blur();
+}
+function updateSelbar(){
+  $('#selcount').textContent=selSeqs.size;
+  $('#seldel').disabled=selSeqs.size===0;
+}
+function toggleSel(node){
+  const s=+node.dataset.seq;
+  if(selSeqs.has(s)){selSeqs.delete(s);node.classList.remove('selected');}
+  else{selSeqs.add(s);node.classList.add('selected');}
+  updateSelbar();
+}
+$('#selbtn').onclick=()=>setSelMode(!selMode);
+$('#selcancel').onclick=()=>setSelMode(false);
+$('#selall').onclick=()=>{
+  const nodes=[...document.querySelectorAll('#msgs .msg')];
+  const allOn=nodes.length>0&&nodes.every(n=>selSeqs.has(+n.dataset.seq));
+  nodes.forEach(n=>{
+    const s=+n.dataset.seq;
+    if(allOn){selSeqs.delete(s);n.classList.remove('selected');}
+    else{selSeqs.add(s);n.classList.add('selected');}
+  });
+  updateSelbar();
+};
+$('#seldel').onclick=async()=>{
+  const n=selSeqs.size;
+  if(!n)return;
+  const ok=await showConfirm('删除选中的 '+n+' 条消息？\n（仅本设备移除，对方设备不受影响）');
+  if(!ok)return;
+  selSeqs.forEach(s=>markDeleted(s));
+  document.querySelectorAll('#msgs .msg').forEach(node=>{
+    if(selSeqs.has(+node.dataset.seq))node.remove();
+  });
+  setSelMode(false);
+  if(!msgsEl.querySelector('.msg')){haveMsgs=false;showWelcome();}
+  toast('已删除 '+n+' 条（仅本设备）');
+};
+
+/* 点击聊天区/空白处 → 输入框失焦 → 键盘收起 */
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('footer')&&document.activeElement===inputEl){
+    inputEl.blur();
+  }
+},{passive:true});
+
+showWelcome();
+setInterval(poll,1000);
+poll();
+</script>
+</body>
+</html>
