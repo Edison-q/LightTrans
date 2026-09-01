@@ -22,20 +22,21 @@ def post_json(p, obj):
                                  headers={"Content-Type": "application/json"})
     return urllib.request.urlopen(req).read()
 
-# 1. 清空现场，从零开始
+# 1. 清空现场，从零开始（消息编号单调递增不清零，取当前编号作为基准）
 urllib.request.urlopen(urllib.request.Request(BASE + "/api/messages", method="DELETE"))
+base = json.loads(get("/api/messages?since=0"))["current_seq"]
 
 # 2. 发送文字（模拟手机 -> 电脑）
 r = json.loads(post_json("/api/text", {"text": "你好，LightTrans！这是手机发来的文字", "sender": "手机"}))
-check("发送文字", r.get("seq") == 1 and r.get("text", "").startswith("你好"))
+check("发送文字", r.get("seq") == base + 1 and r.get("text", "").startswith("你好"))
 
 # 3. 再发一条（模拟电脑 -> 手机）
 r = json.loads(post_json("/api/text", {"text": "收到！电脑回复你", "sender": "电脑"}))
-check("发送第二条", r.get("seq") == 2)
+check("发送第二条", r.get("seq") == base + 2)
 
-# 4. 增量拉取（since=1 应只返回第二条）
-d = json.loads(get("/api/messages?since=1"))
-check("增量拉取", len(d["items"]) == 1 and d["items"][0]["seq"] == 2, f"epoch={d['epoch']}")
+# 4. 增量拉取（since=base+1 应只返回第二条）
+d = json.loads(get("/api/messages?since=%d" % (base + 1)))
+check("增量拉取", len(d["items"]) == 1 and d["items"][0]["seq"] == base + 2, f"epoch={d['epoch']}")
 
 # 5. 全量拉取
 d = json.loads(get("/api/messages?since=0"))
