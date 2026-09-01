@@ -705,6 +705,7 @@ async function sendFiles(files){
 }
 
 async function clearHistory(){
+  if(Date.now()<suppressClick)return;
   if(selMode)setSelMode(false);
   const ok=await showConfirm('清空本设备看到的全部记录？\n（对方设备不受影响，已存文件不删除）');
   if(!ok)return;
@@ -732,6 +733,22 @@ $('#filein').addEventListener('change',e=>{
   e.target.value='';
 });
 $('#clrbtn').onclick=clearHistory;
+/* 长按「清空」按钮：恢复所有已删除的消息记录（误删救援） */
+let clrTimer=null;
+$('#clrbtn').addEventListener('pointerdown',()=>{
+  clrTimer=setTimeout(async()=>{
+    clrTimer=null;
+    suppressClick=Date.now()+1000;  /* 抑制松手后的 click，防止「清空」确认叠加 */
+    const ok=await showConfirm('恢复全部已删除的消息记录？\n（重新显示之前删过的消息）');
+    if(!ok)return;
+    deletedSeqs.clear();
+    saveDeleted();
+    location.reload();
+  },800);
+});
+['pointerup','pointermove','pointercancel'].forEach(ev=>{
+  $('#clrbtn').addEventListener(ev,()=>{if(clrTimer){clearTimeout(clrTimer);clrTimer=null;}});
+});
 
 badge.onclick=()=>{
   const n=prompt('这台设备显示的名字：',state.device);
