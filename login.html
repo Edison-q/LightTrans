@@ -57,7 +57,7 @@ async function go(){
   try{
     const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({token:v})});
-    if(r.ok){location.href='/';}
+    if(r.ok){location.href='/?k='+encodeURIComponent(v);}
     else{$('#err').textContent='令牌不正确，请检查后重试';}
   }catch(e){$('#err').textContent='连接失败，请确认电脑服务已启动';}
 }

@@ -320,6 +320,15 @@ body.sel footer{display:none;}
 const $=s=>document.querySelector(s);
 const msgsEl=$('#msgs'), inputEl=$('#input'), badge=$('#badge'), devnameEl=$('#devname');
 
+/* 访问令牌：优先从 URL 提取（扫码直达），存本地兜底。
+   所有请求显式带 ?k=，彻底摆脱 iOS 对 .local 域名/PWA 的 cookie 不稳定问题 */
+const K=(()=>{
+  const uk=new URLSearchParams(location.search).get('k');
+  if(uk){try{localStorage.setItem('lt_k',uk);}catch(e){}return uk;}
+  try{return localStorage.getItem('lt_k')||'';}catch(e){return '';}
+})();
+function kurl(base){return K?(base+(base.includes('?')?'&':'?')+'k='+K):base;}
+
 const state={seq:0,epoch:null,device:localStorage.getItem('lt_device')||defaultDevice()};
 function defaultDevice(){const ua=navigator.userAgent;return /iPhone|iPad|iPod/i.test(ua)?'手机':/Android/i.test(ua)?'安卓':'电脑';}
 devnameEl.textContent=state.device;
@@ -523,7 +532,7 @@ $('#as1').onclick=()=>{
     if(im)openViewerFrom(im);
     else toast('图片已失效');
   }else{
-    location.href='/api/files/'+encodeURIComponent(t.m.id);
+    location.href=kurl('/api/files/'+encodeURIComponent(t.m.id));
   }
 };
 $('#as2').onclick=()=>{
@@ -584,7 +593,7 @@ function buildMsg(m){
       img.alt=m.name;
       img.onclick=()=>{if(selMode)return;openViewerFrom(img);};
       img.onerror=()=>{img.classList.add('broken');box.appendChild(el('div','imgbroken','图片已失效'));};
-      img.src='/api/files/'+encodeURIComponent(m.id);
+      img.src=kurl('/api/files/'+encodeURIComponent(m.id));
       box.appendChild(img);card.appendChild(box);
     }
     const row=el('div','row');
@@ -595,7 +604,7 @@ function buildMsg(m){
     row.appendChild(info);
     if(!isImg){
       const a=el('a','btn dl','下载');
-      a.href='/api/files/'+encodeURIComponent(m.id);
+      a.href=kurl('/api/files/'+encodeURIComponent(m.id));
       a.download=m.name;
       row.appendChild(a);
     }
@@ -648,7 +657,7 @@ async function copyText(t){
 
 async function poll(){
   try{
-    const r=await fetch('/api/messages?since='+state.seq+(state.epoch!==null?'&epoch='+state.epoch:''));
+    const r=await fetch(kurl('/api/messages?since='+state.seq+(state.epoch!==null?'&epoch='+state.epoch:'')));
     const d=await r.json();
     badge.classList.remove('off');
     if(state.epoch===null){
@@ -671,7 +680,7 @@ async function sendText(){
   if(!t)return;
   inputEl.value='';autogrow();
   try{
-    const r=await fetch('/api/text',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch(kurl('/api/text'),{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({text:t,sender:state.device})});
     if(!r.ok)throw 0;
     const m=await r.json();
@@ -687,7 +696,7 @@ async function sendFiles(files){
   fd.append('sender',state.device);
   toast(files.length>1?'正在发送 '+files.length+' 个文件…':'正在发送…');
   try{
-    const r=await fetch('/api/upload',{method:'POST',body:fd});
+    const r=await fetch(kurl('/api/upload'),{method:'POST',body:fd});
     if(!r.ok)throw 0;
     const msgs=await r.json();
     msgs.forEach(m=>{state.seq=Math.max(state.seq,m.seq);appendMsg(m);});
@@ -736,7 +745,7 @@ badge.onclick=()=>{
 $('#qrbtn').onclick=async()=>{
   $('#modal').classList.add('show');
   try{
-    const s=await (await fetch('/api/state')).json();
+    const s=await (await fetch(kurl('/api/state'))).json();
     $('#urltext').textContent=s.phone_url+'?k='+s.token+'\n备用: '+s.ip_url+'?k='+s.token;
     $('#tokentext').textContent='访问令牌: '+s.token;
   }catch(e){}
@@ -745,7 +754,7 @@ $('#modal').onclick=e=>{if(e.target.id==='modal')e.target.classList.remove('show
 
 (async()=>{
   try{
-    const s=await (await fetch('/api/state')).json();
+    const s=await (await fetch(kurl('/api/state'))).json();
     $('#urlsub').textContent='手机访问: '+s.phone_url.replace('http://','');
   }catch(e){}
 })();
