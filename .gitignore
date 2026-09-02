@@ -13,3 +13,4 @@ icon.png
 # OS
 .DS_Store
 Thumbs.db
+history.backup.json

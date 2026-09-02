@@ -236,7 +236,6 @@ body.sel footer{display:none;}
 }
 .vslide.broken img{display:none;}
 .vslide.broken::after{content:'图片已失效';color:#94a3b8;font-size:13px;}
-}
 /* 图片失效占位 */
 .imgbox{position:relative;}
 .imgbox img.broken{display:none;}
@@ -297,7 +296,7 @@ body.sel footer{display:none;}
   <button id="vprev">‹</button>
   <button id="vnext">›</button>
   <button id="vclose2">✕ 关闭</button>
-  <div id="vhint">点空白处关闭 · 长按图片保存</div>
+  <div id="vhint">点图片外关闭 · 长按图片保存</div>
 </div>
 <div id="actions">
   <div class="as-card">
@@ -365,6 +364,7 @@ function collectImages(){
   return [...document.querySelectorAll('#msgs .filecard .imgbox img:not(.broken)')].map(i=>i.src);
 }
 function openViewerFrom(imgEl){
+  if(imgEl && imgEl.classList.contains('broken')){toast('图片已失效');return;}
   const list=collectImages();
   let idx=imgEl?list.indexOf(imgEl.src):-1;
   if(idx<0)idx=0;
@@ -381,11 +381,19 @@ function openViewer(list,idx){
 }
 function buildTrack(){
   vtrack.innerHTML='';
+  let broken=0;
   vList.forEach(src=>{
     const s=el('div','vslide');
     const im=el('img');
     im.src=src;im.draggable=false;
-    im.onerror=()=>{s.classList.add('broken');toast('图片已失效');};
+    im.onerror=()=>{
+      s.classList.add('broken');
+      broken++;
+      if(broken>=vList.length){
+        /* 全部图片都失效：别把用户困在全屏里，自动退回聊天页 */
+        setTimeout(()=>{if(viewer.classList.contains('show')){closeViewer();toast('图片已失效');}},300);
+      }
+    };
     s.appendChild(im);vtrack.appendChild(s);
   });
 }
@@ -452,7 +460,7 @@ viewer.addEventListener('pointercancel',()=>{vDrag=null;setVIdx(vIdx,true);});
 /* 点击：点图片不关，点空白关闭 */
 viewer.addEventListener('click',e=>{
   if(Date.now()<suppressVClick)return;
-  if(e.target.closest('.vslide'))return;
+  if(e.target.closest('.vslide img'))return;  /* 只有点在图片本身上不关闭 */
   if(e.target.closest('button'))return;
   closeViewer();
 });
