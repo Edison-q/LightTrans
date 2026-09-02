@@ -53,6 +53,7 @@ PORT = PORT_START
 QR_PNG = b""
 MDNS_OK = False
 _zc = None  # zeroconf 实例，需保持存活
+_mdns_info = None  # 已注册的 mDNS 服务，IP 变化时先注销再重注册
 
 
 # ---------------- 消息存储 ----------------
@@ -172,6 +173,17 @@ def get_lan_ip():
     return "127.0.0.1"
 
 
+def get_lan_ip_with_retry(attempts=6, delay=2):
+    """启动时网络可能尚未就绪：探测失败则重试，避免落回 127.0.0.1。"""
+    for i in range(attempts):
+        ip = get_lan_ip()
+        if not ip.startswith("127."):
+            return ip
+        print(f"[网络] 尚未就绪（第 {i + 1}/{attempts} 次探测），{delay}s 后重试…")
+        time.sleep(delay)
+    return "127.0.0.1"
+
+
 def pick_port():
     for p in range(PORT_START, PORT_START + 10):
         with socket.socket() as s:
@@ -266,10 +278,13 @@ def convert_heic(p: Path) -> Path | None:
 
 
 def register_mdns(ip, port) -> bool:
-    global _zc
+    global _zc, _mdns_info
     try:
         from zeroconf import ServiceInfo, Zeroconf
-        _zc = Zeroconf()
+        if _zc is None:
+            _zc = Zeroconf()
+        if _mdns_info is not None:
+            _zc.unregister_service(_mdns_info)
         info = ServiceInfo(
             "_http._tcp.local.",
             f"{SERVICE_NAME}._http._tcp.local.",
@@ -278,6 +293,7 @@ def register_mdns(ip, port) -> bool:
             server=f"{SERVICE_NAME}.local.",
         )
         _zc.register_service(info, allow_name_change=True)
+        _mdns_info = info
         print(f"[mDNS] 已注册 {SERVICE_NAME}.local -> {ip}:{port}")
         return True
     except Exception as e:  # noqa: BLE001
@@ -396,10 +412,40 @@ def get_file(fid: str, download: bool = False):
     return FileResponse(p, media_type=media)
 
 
+def _check_ip_once() -> bool:
+    """检测一次 IP 变化；变化则更新 mDNS 与二维码。返回是否有变化。"""
+    global LAN_IP, QR_PNG, MDNS_OK
+    try:
+        ip = get_lan_ip()
+    except Exception:
+        return False
+    if ip.startswith("127.") or ip == LAN_IP:
+        return False
+    old, LAN_IP = LAN_IP, ip
+    print(f"[网络] IP 变化 {old} -> {ip}，更新 mDNS 与二维码…")
+    if register_mdns(ip, PORT):
+        MDNS_OK = True
+    qr_url = (f"http://{SERVICE_NAME}.local:{PORT}" if MDNS_OK
+              else f"http://{ip}:{PORT}") + f"?k={TOKEN}"
+    QR_PNG = make_qr(qr_url)
+    print(f"[网络] 已更新，新备用地址: http://{ip}:{PORT}")
+    return True
+
+
+def ip_watcher():
+    """运行中每 15 秒检测一次局域网 IP，切换网络无需重启服务。"""
+    while True:
+        time.sleep(15)
+        try:
+            _check_ip_once()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 # ---------------- 主入口 ----------------
 def main():
     global LAN_IP, PORT, QR_PNG, MDNS_OK
-    LAN_IP = get_lan_ip()
+    LAN_IP = get_lan_ip_with_retry()
     PORT = pick_port()
     phone_url = f"http://{SERVICE_NAME}.local:{PORT}"
     ip_url = f"http://{LAN_IP}:{PORT}"
@@ -431,6 +477,7 @@ def main():
 
     if os.environ.get("LT_SILENT") != "1":
         threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
+    threading.Thread(target=ip_watcher, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
 
 
