@@ -32,6 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent
 RECEIVE_DIR = BASE_DIR / "接收文件"
 HISTORY_FILE = BASE_DIR / "history.json"
 ICON_FILE = BASE_DIR / "icon.png"
+ICO_FILE = BASE_DIR / "icon.ico"
 SERVICE_NAME = "lighttrans"
 PORT_START = 8765
 MAX_HISTORY = 50
@@ -309,10 +310,26 @@ def index():
 
 
 @app.get("/favicon.ico")
+def favicon():
+    """真·ICO 多尺寸图标：Edge App 窗口/任务栏需要它才能清晰显示。"""
+    if not ICO_FILE.exists():
+        try:
+            Image.open(ICON_FILE).convert("RGBA").save(
+                ICO_FILE,
+                sizes=[(16, 16), (32, 32), (48, 48), (64, 64),
+                       (128, 128), (256, 256)])
+        except Exception:
+            make_icon(ICON_FILE)
+            return FileResponse(ICON_FILE,
+                                headers={"Cache-Control": "public, max-age=3600"})
+    return FileResponse(ICO_FILE, media_type="image/x-icon",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/icon.png")
 def icon():
     make_icon(ICON_FILE)
-    return FileResponse(ICON_FILE, headers={"Cache-Control": "public, max-age=3600"})
+    return FileResponse(ICON_FILE, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/manifest.webmanifest")
@@ -321,7 +338,9 @@ def manifest():
         {"name": "LightTrans", "short_name": "LightTrans", "start_url": "/",
          "display": "standalone", "background_color": "#ecfeff",
          "theme_color": "#06b6d4",
-         "icons": [{"src": "/icon.png", "sizes": "180x180", "type": "image/png"}]},
+         "icons": [{"src": "/icon.png", "sizes": "180x180", "type": "image/png"},
+                   {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                   {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]},
         media_type="application/manifest+json")
 
 

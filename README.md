@@ -40,6 +40,10 @@ Then:
 3. Scan the QR code with your iPhone camera → tap **Share** → **Add to Home Screen**
 4. Done — tap the icon to use it forever (the QR already contains the access token)
 
+**Daily open (recommended):** double-click `打开LightTrans.vbs` (pin its desktop shortcut to the taskbar): opens the page instantly if the server is up; if not, auto-starts it, waits until ready, then opens — you never worry about server state. `停止服务.bat` stops all instances on ports 8765-8774.
+
+> Windows 11 refuses to pin script shortcuts to the taskbar — use `LightTrans.exe` (prebuilt launcher with the icon embedded; source: `launcher.cs`) for the taskbar pin instead.
+
 **Auto-start (optional):** create a shortcut to `静默启动.vbs` and place it in the Startup folder (`Win+R` → `shell:startup`). The service runs silently in the background.
 
 ## 📱 Mobile Usage
@@ -135,6 +139,10 @@ uv run server.py       # 或双击 启动LightTrans.bat
 2. 点右上角「连接手机」
 3. iPhone 相机扫码 → 「分享」→「添加到主屏幕」
 4. 完成 —— 以后点图标即用（二维码已包含访问令牌）
+
+**日常打开（推荐）：** 双击 `打开LightTrans.vbs`（桌面快捷方式可固定到任务栏）：服务在线则秒开页面；服务不在线会自动拉起、等待就绪后打开，永远不用关心服务状态。`停止服务.bat` 会停掉 8765-8774 端口上的全部实例。
+
+> Windows 11 不允许把脚本快捷方式固定到任务栏，固定任务栏请用 `LightTrans.exe`（预编译启动器，图标已内嵌；源码 `launcher.cs`）。
 
 **开机自启（可选）：** 给 `静默启动.vbs` 创建快捷方式，放入启动文件夹（`Win+R` → `shell:startup`），服务静默后台运行。
 
