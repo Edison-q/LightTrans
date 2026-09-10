@@ -12,6 +12,7 @@ import socket
 import sys
 import threading
 import time
+import zipfile
 import webbrowser
 from pathlib import Path
 
@@ -22,10 +23,11 @@ except Exception:
 
 import qrcode
 import uvicorn
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from PIL import Image, ImageDraw
+from starlette.background import BackgroundTask
 
 # ---------------- 配置 ----------------
 BASE_DIR = Path(__file__).resolve().parent
@@ -33,6 +35,8 @@ RECEIVE_DIR = BASE_DIR / "接收文件"
 HISTORY_FILE = BASE_DIR / "history.json"
 ICON_FILE = BASE_DIR / "icon.png"
 ICO_FILE = BASE_DIR / "icon.ico"
+SSL_CERT = BASE_DIR / "server.crt"
+SSL_KEY = BASE_DIR / "server.key"
 SERVICE_NAME = "lighttrans"
 PORT_START = 8765
 MAX_HISTORY = 50
@@ -51,6 +55,7 @@ else:
 # 运行时全局状态
 LAN_IP = "127.0.0.1"
 PORT = PORT_START
+HTTPS_PORT = None  # main() 里 = PORT + 1，iOS 主屏图标强制 https，走此端口
 QR_PNG = b""
 MDNS_OK = False
 _zc = None  # zeroconf 实例，需保持存活
@@ -309,6 +314,14 @@ def index():
                         headers={"Cache-Control": "no-store"})
 
 
+def build_urls(ip):
+    """手机访问地址：有证书给 https（iOS 主屏强制），否则降级 http。"""
+    if SSL_CERT.exists() and SSL_KEY.exists() and HTTPS_PORT:
+        return (f"https://{SERVICE_NAME}.local:{HTTPS_PORT}",
+                f"https://{ip}:{HTTPS_PORT}")
+    return (f"http://{SERVICE_NAME}.local:{PORT}", f"http://{ip}:{PORT}")
+
+
 @app.get("/favicon.ico")
 def favicon():
     """真·ICO 多尺寸图标：Edge App 窗口/任务栏需要它才能清晰显示。"""
@@ -357,9 +370,8 @@ def health():
 
 @app.get("/api/state")
 def state():
-    mdns_url = f"http://{SERVICE_NAME}.local:{PORT}"
-    ip_url = f"http://{LAN_IP}:{PORT}"
-    return {"phone_url": mdns_url if MDNS_OK else ip_url,
+    phone_url, ip_url = build_urls(LAN_IP)
+    return {"phone_url": phone_url if MDNS_OK else ip_url,
             "ip_url": ip_url, "mdns_ok": MDNS_OK, "token": TOKEN}
 
 
@@ -431,6 +443,37 @@ def get_file(fid: str, download: bool = False):
     return FileResponse(p, media_type=media)
 
 
+@app.get("/api/zip")
+def zip_files(ids: list[str] = Query(default=[])):
+    """批量保存：把选中的文件原样打包成 zip 下载。不存在的文件自动跳过。"""
+    names = list(dict.fromkeys(Path(x).name for x in ids if x.strip()))
+    files = [RECEIVE_DIR / n for n in names if (RECEIVE_DIR / n).is_file()]
+    if not files:
+        raise HTTPException(404, "没有可打包的文件（可能都已被删除）")
+    tmp = BASE_DIR / f"lt-zip-{secrets.token_hex(4)}.zip"
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
+            for p in files:
+                z.write(p, arcname=p.name)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise HTTPException(500, "打包失败")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+
+    def cleanup():
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+    return FileResponse(tmp, media_type="application/zip",
+                        filename=f"lighttrans-{stamp}.zip",
+                        background=BackgroundTask(cleanup))
+
+
 def _check_ip_once() -> bool:
     """检测一次 IP 变化；变化则更新 mDNS 与二维码。返回是否有变化。"""
     global LAN_IP, QR_PNG, MDNS_OK
@@ -442,12 +485,12 @@ def _check_ip_once() -> bool:
         return False
     old, LAN_IP = LAN_IP, ip
     print(f"[网络] IP 变化 {old} -> {ip}，更新 mDNS 与二维码…")
-    if register_mdns(ip, PORT):
+    if register_mdns(ip, HTTPS_PORT or PORT):
         MDNS_OK = True
-    qr_url = (f"http://{SERVICE_NAME}.local:{PORT}" if MDNS_OK
-              else f"http://{ip}:{PORT}") + f"?k={TOKEN}"
+    phone_url, ip_url = build_urls(ip)
+    qr_url = (phone_url if MDNS_OK else ip_url) + f"?k={TOKEN}"
     QR_PNG = make_qr(qr_url)
-    print(f"[网络] 已更新，新备用地址: http://{ip}:{PORT}")
+    print(f"[网络] 已更新，新备用地址: {ip_url}")
     return True
 
 
@@ -461,15 +504,27 @@ def ip_watcher():
             pass
 
 
+def run_https():
+    """HTTPS 通道：iOS 主屏图标强制 https。启动失败不影响 http。"""
+    if not (SSL_CERT.exists() and SSL_KEY.exists()):
+        print("[HTTPS] 未找到证书，HTTPS 通道关闭（手机 Safari 仍可用 http）")
+        return
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=HTTPS_PORT, log_level="warning",
+                    ssl_certfile=str(SSL_CERT), ssl_keyfile=str(SSL_KEY))
+    except Exception as e:  # noqa: BLE001
+        print(f"[HTTPS] 启动失败（手机请用 http 备用地址）: {e}")
+
+
 # ---------------- 主入口 ----------------
 def main():
-    global LAN_IP, PORT, QR_PNG, MDNS_OK
+    global LAN_IP, PORT, HTTPS_PORT, QR_PNG, MDNS_OK
     LAN_IP = get_lan_ip_with_retry()
     PORT = pick_port()
-    phone_url = f"http://{SERVICE_NAME}.local:{PORT}"
-    ip_url = f"http://{LAN_IP}:{PORT}"
+    HTTPS_PORT = PORT + 1 if PORT + 1 < PORT_START + 10 else None
+    phone_url, ip_url = build_urls(LAN_IP)
 
-    MDNS_OK = register_mdns(LAN_IP, PORT)
+    MDNS_OK = register_mdns(LAN_IP, HTTPS_PORT or PORT)
     qr_url = (phone_url if MDNS_OK else ip_url) + f"?k={TOKEN}"
     QR_PNG = make_qr(qr_url)
     make_icon(ICON_FILE)
@@ -478,7 +533,11 @@ def main():
     print(line)
     print("  LightTrans 局域网快递站已启动")
     print(f"  电脑端 : http://localhost:{PORT}")
-    print(f"  手机端 : {phone_url}?k={TOKEN}")
+    if SSL_CERT.exists() and SSL_KEY.exists():
+        print(f"  手机端 : {phone_url}?k={TOKEN}")
+    else:
+        print(f"  手机端 : http://{SERVICE_NAME}.local:{PORT}?k={TOKEN}")
+        print("  （未找到证书，HTTPS 关闭，手机主屏图标将无法使用）")
     if not MDNS_OK:
         print(f"  （mDNS 不可用，手机请用备用地址）")
     print(f"  备用   : {ip_url}?k={TOKEN}")
@@ -497,6 +556,8 @@ def main():
     if os.environ.get("LT_SILENT") != "1":
         threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
     threading.Thread(target=ip_watcher, daemon=True).start()
+    if HTTPS_PORT:
+        threading.Thread(target=run_https, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
 
 

@@ -273,6 +273,7 @@ body.sel footer{display:none;}
   <button class="btn ghost" id="selcancel">取消</button>
   <div class="selinfo">已选 <b id="selcount">0</b> 条</div>
   <button class="btn ghost" id="selall">全选</button>
+  <button class="btn ghost" id="selsave" title="打包下载选中的文件"><span class="ic">💾</span><span class="tx"> 保存</span></button>
   <button class="btn" id="seldel">删除</button>
 </div>
 <div id="toast"></div>
@@ -583,6 +584,7 @@ function buildMsg(m){
   const me=m.sender===state.device;
   const wrap=el('div','msg'+(me?' me':''));
   wrap.dataset.seq=m.seq;
+  if(m.type==='file')wrap.dataset.fid=m.id;
   wrap.onclick=e=>{
     if(!selMode)return;
     if(e.target.closest('a,button'))return;
@@ -700,17 +702,25 @@ async function sendText(){
 
 async function sendFiles(files){
   if(!files||!files.length)return;
-  const fd=new FormData();
-  for(const f of files)fd.append('files',f);
-  fd.append('sender',state.device);
-  toast(files.length>1?'正在发送 '+files.length+' 个文件…':'正在发送…');
-  try{
-    const r=await fetch(kurl('/api/upload'),{method:'POST',body:fd});
-    if(!r.ok)throw 0;
-    const msgs=await r.json();
-    msgs.forEach(m=>{state.seq=Math.max(state.seq,m.seq);appendMsg(m);});
-    toast('已发送 ✓');
-  }catch(e){toast('发送失败，请重试');}
+  const total=files.length;
+  let done=0;
+  for(const f of files){
+    const fd=new FormData();
+    fd.append('files',f);
+    fd.append('sender',state.device);
+    toast(total>1?('正在发送 '+done+'/'+total+'：'+f.name):'正在发送…');
+    try{
+      const r=await fetch(kurl('/api/upload'),{method:'POST',body:fd});
+      if(!r.ok)throw 0;
+      const msgs=await r.json();
+      msgs.forEach(m=>{state.seq=Math.max(state.seq,m.seq);appendMsg(m);});
+      done++;
+    }catch(e){
+      toast('发送失败：'+f.name+'（已发 '+done+'/'+total+'）');
+      return;
+    }
+  }
+  toast(total>1?('已发送 '+done+' 个文件 ✓'):'已发送 ✓');
 }
 
 async function clearHistory(){
@@ -810,9 +820,13 @@ function setSelMode(on){
   updateSelbar();
   if(on)inputEl.blur();
 }
+function selectedFileNodes(){
+  return [...document.querySelectorAll('#msgs .msg.selected')].filter(n=>n.dataset.fid);
+}
 function updateSelbar(){
   $('#selcount').textContent=selSeqs.size;
   $('#seldel').disabled=selSeqs.size===0;
+  $('#selsave').disabled=selectedFileNodes().length===0;
 }
 function toggleSel(node){
   const s=+node.dataset.seq;
@@ -844,6 +858,25 @@ $('#seldel').onclick=async()=>{
   setSelMode(false);
   if(!msgsEl.querySelector('.msg')){haveMsgs=false;showWelcome();}
   toast('已删除 '+n+' 条（仅本设备）');
+};
+$('#selsave').onclick=async()=>{
+  const nodes=selectedFileNodes();
+  if(!nodes.length){toast('选中的消息里没有文件');return;}
+  const ids=[];let skipped=0;
+  nodes.forEach(n=>{
+    if(n.querySelector('.imgbox img.broken')){skipped++;return;}
+    ids.push(n.dataset.fid);
+  });
+  if(!ids.length){toast('选中的文件都已失效');return;}
+  const qs=ids.map(i=>'ids='+encodeURIComponent(i)).join('&');
+  const a=document.createElement('a');
+  a.href=kurl('/api/zip?'+qs);
+  a.download='';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setSelMode(false);
+  toast('已保存 '+ids.length+' 个文件 (zip)'+(skipped?'，跳过 '+skipped+' 张失效':''));
 };
 
 /* 点击聊天区/空白处 → 输入框失焦 → 键盘收起 */
