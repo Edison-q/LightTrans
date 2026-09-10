@@ -10,6 +10,10 @@ server.log
 接收文件/
 icon.png
 
+# TLS private keys (never commit; public certs are fine)
+server.key
+ca.key
+
 # OS
 .DS_Store
 Thumbs.db
