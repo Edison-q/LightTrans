@@ -273,7 +273,7 @@ body.sel footer{display:none;}
   <button class="btn ghost" id="selcancel">取消</button>
   <div class="selinfo">已选 <b id="selcount">0</b> 条</div>
   <button class="btn ghost" id="selall">全选</button>
-  <button class="btn ghost" id="selsave" title="打包下载选中的文件"><span class="ic">💾</span><span class="tx"> 保存</span></button>
+  <button class="btn ghost" id="selsave" title="保存选中的文件"><span class="ic">💾</span><span class="tx"> 保存</span></button>
   <button class="btn" id="seldel">删除</button>
 </div>
 <div id="toast"></div>
@@ -859,6 +859,7 @@ $('#seldel').onclick=async()=>{
   if(!msgsEl.querySelector('.msg')){haveMsgs=false;showWelcome();}
   toast('已删除 '+n+' 条（仅本设备）');
 };
+const isTouchDevice=matchMedia('(hover:none)').matches;
 $('#selsave').onclick=async()=>{
   const nodes=selectedFileNodes();
   if(!nodes.length){toast('选中的消息里没有文件');return;}
@@ -868,16 +869,33 @@ $('#selsave').onclick=async()=>{
     ids.push(n.dataset.fid);
   });
   if(!ids.length){toast('选中的文件都已失效');return;}
-  const qs=ids.map(i=>'ids='+encodeURIComponent(i)).join('&');
-  const a=document.createElement('a');
-  a.href=kurl('/api/zip?'+qs);
-  a.download='';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
   setSelMode(false);
-  toast('已保存 '+ids.length+' 个文件 (zip)'+(skipped?'，跳过 '+skipped+' 张失效':''));
+  const tail=(skipped?'，跳过 '+skipped+' 张失效':'');
+  if(!isTouchDevice){
+    /* 电脑：逐个直接下载进「下载」文件夹 */
+    for(const id of ids){
+      const a=document.createElement('a');
+      a.href=kurl('/api/files/'+encodeURIComponent(id)+'?download=true');
+      a.download=id;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      await new Promise(r=>setTimeout(r,400));
+    }
+    toast('已保存 '+ids.length+' 个文件到下载文件夹'+tail);
+  }else{
+    /* 手机：网页无法批量写相册，打包 zip 存「文件」App */
+    const qs=ids.map(i=>'ids='+encodeURIComponent(i)).join('&');
+    const a=document.createElement('a');
+    a.href=kurl('/api/zip?'+qs);
+    a.download='';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('已保存 '+ids.length+' 个文件 (zip)'+tail);
+  }
 };
+if(isTouchDevice)$('#selsave .tx').textContent=' 保存 (zip)';
 
 /* 点击聊天区/空白处 → 输入框失焦 → 键盘收起 */
 document.addEventListener('pointerdown',e=>{
