@@ -344,7 +344,12 @@ function markDeleted(seq){deletedSeqs.add(seq);saveDeleted();}
 
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 function fmtSize(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';return (b/1048576).toFixed(1)+' MB';}
-function fmtTime(t){const d=new Date(t*1000);return d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});}
+function fmtTime(t){
+  const d=new Date(t*1000);
+  const md=d.toLocaleDateString('zh-CN',{month:'numeric',day:'numeric'});
+  const hm=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+  return (d.getFullYear()!==new Date().getFullYear()?d.getFullYear()+'/':'')+md+' '+hm;
+}
 function toast(t){const x=$('#toast');x.textContent=t;x.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>x.classList.remove('show'),1600);}
 
 function fileIcon(name){
