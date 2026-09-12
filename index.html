@@ -195,8 +195,10 @@ body.sel footer{display:none;}
   .filecard{max-width:300px;}
   .filecard .fname{font-size:13px;}
   #toast{bottom:110px;}
-  #selbar{gap:6px;padding:7px 8px;}
-  .selinfo{font-size:12px;}
+  #selbar{gap:4px;padding:6px 8px;max-width:calc(100vw - 12px);}
+  #selbar .btn{padding:6px 7px;font-size:11px;}
+  #selsave .ic{display:none;}
+  .selinfo{font-size:11px;}
 }
 #vclose2{
   position:absolute;bottom:calc(58px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
@@ -869,8 +871,9 @@ $('#selsave').onclick=async()=>{
     ids.push(n.dataset.fid);
   });
   if(!ids.length){toast('选中的文件都已失效');return;}
+  const txtSkipped=selSeqs.size-nodes.length;
   setSelMode(false);
-  const tail=(skipped?'，跳过 '+skipped+' 张失效':'');
+  const tail=(skipped?'，跳过 '+skipped+' 张失效':'')+(txtSkipped>0?'，文字消息不参与保存':'');
   if(!isTouchDevice){
     /* 电脑：逐个直接下载进「下载」文件夹 */
     for(const id of ids){
@@ -895,7 +898,7 @@ $('#selsave').onclick=async()=>{
     toast('已保存 '+ids.length+' 个文件 (zip)'+tail);
   }
 };
-if(isTouchDevice)$('#selsave .tx').textContent=' 保存 (zip)';
+if(isTouchDevice)$('#selsave .tx').textContent=' 存zip';
 
 /* 点击聊天区/空白处 → 输入框失焦 → 键盘收起 */
 document.addEventListener('pointerdown',e=>{
