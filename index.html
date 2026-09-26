@@ -231,15 +231,17 @@ body.sel footer{display:none;}
   color:#fff;font-size:13px;background:rgba(255,255,255,.14);padding:3px 12px;border-radius:999px;
   pointer-events:none;user-select:none;z-index:10;
 }
-/* 查看器：跟手分页滑轨 */
-#vtrack{position:absolute;inset:0;display:flex;touch-action:pan-y;z-index:0;}
+/* 查看器：跟手分页滑轨 + 捏合缩放（touch-action 锁死，避免带动背景滚动/浏览器整页缩放） */
+#vtrack{position:absolute;inset:0;display:flex;touch-action:none;z-index:0;}
+#viewer{touch-action:none;}
+#viewer.show .vslide img{will-change:transform;}
 .vslide{
   flex:0 0 100%;display:flex;align-items:center;justify-content:center;
   padding:calc(20px + env(safe-area-inset-top)) 12px calc(20px + env(safe-area-inset-bottom));
 }
 .vslide img{
   max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;
-  -webkit-user-drag:none;-webkit-user-select:none;user-select:none;
+  -webkit-user-drag:none;-webkit-user-select:none;user-select:none;touch-action:none;
 }
 .vslide.broken img{display:none;}
 .vslide.broken::after{content:'图片已失效';color:#94a3b8;font-size:13px;}
@@ -414,65 +416,263 @@ function buildTrack(){
   });
 }
 function setVIdx(i,animate){
+  const out=vImgEl();                 /* 旧图带着缩放滑出，滑完再清 */
   vIdx=i;
+  vCancelAnim();vZ={s:1,tx:0,ty:0};
   vcounter.textContent=(vIdx+1)+' / '+vList.length;
   $('#vprev').disabled=vIdx===0;
   $('#vnext').disabled=vIdx===vList.length-1;
   vtrack.style.transition=animate?'transform .25s ease':'none';
   vtrack.style.transform='translateX('+(-vIdx*viewer.clientWidth)+'px)';
+  const inIm=vImgEl();if(inIm)inIm.style.transform='';
+  if(out&&out!==inIm)setTimeout(()=>{if(out!==vImgEl())out.style.transform='';},animate?300:0);
 }
-function closeViewer(){viewer.classList.remove('show');document.body.style.overflow='';}
+function closeViewer(){
+  viewer.classList.remove('show');document.body.style.overflow='';
+  vPts.clear();vPan=null;vPinch=null;vCancelAnim();vZ={s:1,tx:0,ty:0};vLastTap={t:0,x:0,y:0};
+  [...vtrack.querySelectorAll('img')].forEach(im=>{im.style.transform='';});
+}
 function stepViewer(d){
   const n=vIdx+d;
   if(n<0||n>=vList.length)return;
   setVIdx(n,true);
 }
-/* 触屏拖拽：跟手移动，松手按位移/速度翻页或回弹，边界阻尼 */
-let vDrag=null, suppressVClick=0;
-vtrack.addEventListener('pointerdown',e=>{
-  if(e.pointerType!=='touch')return;
-  vDrag={x:e.clientX,y:e.clientY,base:-vIdx*viewer.clientWidth,
-         horiz:false,moved:false,lastX:e.clientX,lastT:Date.now()};
-  vtrack.style.transition='none';
+/* ===== 查看器手势：单指翻页 / 双指捏合缩放 / 双击缩放 / 放大后平移+越界翻页 / 电脑滚轮缩放 ===== */
+let vDrag=null;                       /* 兼容旧名（单指翻页状态存于 vPan） */
+let suppressVClick=0;
+const VZMIN=0.6, VZMAX=4, VZDBL=2.5;
+let vZ={s:1,tx:0,ty:0};               /* 当前图片的缩放/平移 */
+let vPts=new Map();                   /* 活动指针 pointerId -> {x,y,t} */
+let vPan=null, vPinch=null;
+let vAnim=0, vMovePending=false;
+let vLastTap={t:0,x:0,y:0}, vLastDblTouch=0;
+
+function vSlideEl(){return vtrack.children[vIdx]||null;}
+function vImgEl(){const s=vSlideEl();if(!s)return null;const im=s.querySelector('img');return im&&!im.classList.contains('broken')?im:null;}
+/* 基础几何：图片未变换时的中心与尺寸（只在手势开始时取一次，避免中途重排导致漂移） */
+function vGeom(){
+  const im=vImgEl();if(!im)return null;
+  const r=vSlideEl().getBoundingClientRect();
+  return {cx:r.left+r.width/2, cy:r.top+r.height/2, w:im.offsetWidth, h:im.offsetHeight, sw:r.width, sh:r.height};
+}
+function vClamp(s,tx,ty,g){
+  g=g||vGeom();if(!g)return {tx:0,ty:0};
+  const mx=Math.max(0,(g.w*s-g.sw)/2), my=Math.max(0,(g.h*s-g.sh)/2);
+  return {tx:Math.min(mx,Math.max(-mx,tx)), ty:Math.min(my,Math.max(-my,ty))};
+}
+function vApply(){
+  const im=vImgEl();if(!im)return;
+  im.style.transform=(vZ.s===1&&vZ.tx===0&&vZ.ty===0)?''
+    :('translate3d('+vZ.tx.toFixed(2)+'px,'+vZ.ty.toFixed(2)+'px,0) scale('+vZ.s.toFixed(4)+')');
+}
+function vCancelAnim(){if(vAnim){cancelAnimationFrame(vAnim);vAnim=0;}}
+function vAnimateTo(s,tx,ty,ms){
+  vCancelAnim();
+  const s0=vZ.s,tx0=vZ.tx,ty0=vZ.ty,t0=performance.now();
+  const tick=()=>{
+    const k=Math.min(1,(performance.now()-t0)/ms), e=1-Math.pow(1-k,3);
+    vZ={s:s0+(s-s0)*e, tx:tx0+(tx-tx0)*e, ty:ty0+(ty-ty0)*e};
+    vApply();
+    if(k<1)vAnim=requestAnimationFrame(tick);else vAnim=0;
+  };
+  vAnim=requestAnimationFrame(tick);
+}
+/* 以屏幕点 (ax,ay) 为锚点缩放到 sNew（捏合/滚轮/双击共用同一套数学）
+   minS：捏合时允许暂时小于 1（松手回弹）；滚轮没有松手时机，直接停在 1 */
+function vZoomAt(ax,ay,sNew,g,animate,minS){
+  g=g||vGeom();if(!g)return;
+  const lo=(minS===undefined?VZMIN:minS);
+  const s0=vZ.s;
+  const s=Math.min(VZMAX,Math.max(lo,sNew));
+  const p0x=(ax-g.cx-vZ.tx)/s0, p0y=(ay-g.cy-vZ.ty)/s0;
+  let tx=(ax-g.cx)-s*p0x, ty=(ay-g.cy)-s*p0y;
+  if(s>=1){const c=vClamp(s,tx,ty,g);tx=c.tx;ty=c.ty;}
+  if(animate)vAnimateTo(s,tx,ty,220);
+  else{vCancelAnim();vZ={s,tx,ty};vApply();}
+}
+function vToggleZoom(ax,ay){
+  const g=vGeom();if(!g)return;
+  if(vZ.s>1.02){vAnimateTo(1,0,0,220);return;}
+  vZoomAt(ax,ay,VZDBL,g,true);
+}
+viewer.addEventListener('pointerdown',e=>{
+  if(!viewer.classList.contains('show'))return;
+  if(e.target.closest('button'))return;
+  if(!vImgEl())return;
+  const zoomed=vZ.s>1.001;
+  if(e.pointerType!=='touch'&&!(e.pointerType==='mouse'&&zoomed))return;
+  vPts.set(e.pointerId,{x:e.clientX,y:e.clientY,t:Date.now()});
+  vCancelAnim();
+  const n=vPts.size;
+  if(n===1){
+    vPinch=null;
+    if(zoomed){
+      vPan={mode:'pan',geom:vGeom(),startX:e.clientX,startY:e.clientY,
+            lastX:e.clientX,lastY:e.clientY,lastT:Date.now(),vx:0,moved:false};
+    }else{
+      vPan={mode:'swipe',x:e.clientX,y:e.clientY,base:-vIdx*viewer.clientWidth,
+            horiz:false,moved:false,lastX:e.clientX,lastT:Date.now()};
+    }
+    vtrack.style.transition='none';
+  }else if(n===2){
+    const ps=[...vPts.values()];
+    vPan=null;
+    /* 第二根手指落下：立刻把滑轨归位到当前页，避免「翻到一半的图被缩放」 */
+    vtrack.style.transition='none';
+    vtrack.style.transform='translateX('+(-vIdx*viewer.clientWidth)+'px)';
+    vPinch={d0:Math.max(1,Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y)),
+            mid0:{x:(ps[0].x+ps[1].x)/2,y:(ps[0].y+ps[1].y)/2},
+            s0:vZ.s,tx0:vZ.tx,ty0:vZ.ty,geom:vGeom(),moved:false};
+    vtrack.style.transition='none';
+  }
 });
 viewer.addEventListener('pointermove',e=>{
-  if(!vDrag||e.pointerType!=='touch')return;
-  const dx=e.clientX-vDrag.x, dy=e.clientY-vDrag.y;
-  if(!vDrag.moved){
-    if(Math.hypot(dx,dy)<8)return;
-    vDrag.moved=true;
-    vDrag.horiz=Math.abs(dx)>Math.abs(dy);
-  }
-  if(!vDrag.horiz)return;
-  e.preventDefault();
-  const w=viewer.clientWidth;
-  let x=vDrag.base+dx;
-  const minX=-(vList.length-1)*w;
-  if(x>0)x*=0.3;
-  else if(x<minX)x=minX+(x-minX)*0.3;
-  vtrack.style.transform='translateX('+x+'px)';
-  vDrag.lastX=e.clientX;vDrag.lastT=Date.now();
+  if(!vPts.has(e.pointerId))return;
+  const rec=vPts.get(e.pointerId);rec.x=e.clientX;rec.y=e.clientY;
+  if(!vMovePending){vMovePending=true;requestAnimationFrame(vUpdate);}
 });
-function endDrag(e){
-  if(!vDrag)return;
-  const d=vDrag;
-  vDrag=null;
-  const w=viewer.clientWidth;
-  const dx=e.clientX-d.x;
-  const dt=Math.max(Date.now()-d.lastT,1);
-  const vx=(e.clientX-d.lastX)/dt;
-  let target=vIdx;
-  if(d.moved&&d.horiz){
-    if(dx<-w/4||(vx<-0.5&&dx<0))target=vIdx+1;
-    else if(dx>w/4||(vx>0.5&&dx>0))target=vIdx-1;
-  }
-  if(target<0)target=0;
-  if(target>=vList.length)target=vList.length-1;
-  if(d.moved)suppressVClick=Date.now()+400;
-  setVIdx(target,true);
+function vUpdate(){
+  vMovePending=false;
+  if(vPinch){vPinchUpdate();return;}
+  if(vPan)vPanUpdate();
 }
-viewer.addEventListener('pointerup',e=>{if(e.pointerType==='touch')endDrag(e);});
-viewer.addEventListener('pointercancel',()=>{vDrag=null;setVIdx(vIdx,true);});
+function vPinchUpdate(){
+  const ps=[...vPts.values()];if(ps.length<2||!vPinch)return;
+  const p=vPinch, g=p.geom;
+  const d=Math.max(1,Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y));
+  const mid={x:(ps[0].x+ps[1].x)/2,y:(ps[0].y+ps[1].y)/2};
+  if(!p.moved){
+    if(Math.abs(d-p.d0)<8&&Math.hypot(mid.x-p.mid0.x,mid.y-p.mid0.y)<8)return;
+    p.moved=true;suppressVClick=Date.now()+400;
+  }
+  let s=p.s0*(d/p.d0);
+  if(s>VZMAX)s=VZMAX;if(s<VZMIN)s=VZMIN;
+  /* 捏合中心不动：起始中点下的那个图片点，始终钉在当前中点 */
+  const p0x=(p.mid0.x-g.cx-p.tx0)/p.s0, p0y=(p.mid0.y-g.cy-p.ty0)/p.s0;
+  let tx=(mid.x-g.cx)-s*p0x, ty=(mid.y-g.cy)-s*p0y;
+  if(s>=1){const c=vClamp(s,tx,ty,g);tx=c.tx;ty=c.ty;}
+  else{const mx=g.sw/2,my=g.sh/2;tx=Math.min(mx,Math.max(-mx,tx));ty=Math.min(my,Math.max(-my,ty));}
+  vZ={s,tx,ty};vApply();
+}
+function vPanUpdate(){
+  const p=vPan;if(!p)return;
+  const q=[...vPts.values()][0];if(!q)return;
+  if(p.mode==='swipe'){
+    const dx=q.x-p.x, dy=q.y-p.y;
+    if(!p.moved){
+      if(Math.hypot(dx,dy)<8)return;
+      p.moved=true;p.horiz=Math.abs(dx)>Math.abs(dy);
+    }
+    if(!p.horiz)return;
+    const w=viewer.clientWidth;
+    let x=p.base+dx;
+    const minX=-(vList.length-1)*w;
+    if(x>0)x*=0.3;else if(x<minX)x=minX+(x-minX)*0.3;
+    vtrack.style.transform='translateX('+x+'px)';
+    p.lastX=q.x;p.lastT=Date.now();
+    return;
+  }
+  const dx=q.x-p.lastX, dy=q.y-p.lastY;
+  if(!p.moved){
+    if(Math.hypot(q.x-p.startX,q.y-p.startY)<8)return;
+    p.moved=true;suppressVClick=Date.now()+400;
+  }
+  const now=Date.now(),dt=Math.max(now-p.lastT,1);
+  p.vx=(q.x-p.lastX)/dt;p.lastT=now;p.lastX=q.x;p.lastY=q.y;
+  /* 单独累计「未阻尼的原始位置」，越界量才不会被逐步阻尼吃掉（松手判定要用真实越界量） */
+  if(p.rawTx===undefined){p.rawTx=vZ.tx;p.rawTy=vZ.ty;}
+  p.rawTx+=dx;p.rawTy+=dy;
+  const c=vClamp(vZ.s,p.rawTx,p.rawTy,p.geom);
+  const ox=p.rawTx-c.tx, oy=p.rawTy-c.ty;
+  vZ.tx=ox?c.tx+ox*0.35:c.tx;            /* 越界 35% 跟手（阻尼提示可翻页） */
+  vZ.ty=oy?c.ty+oy*0.35:c.ty;
+  vApply();
+}
+viewer.addEventListener('pointerup',e=>vEnd(e,false));
+viewer.addEventListener('pointercancel',e=>vEnd(e,true));
+function vEnd(e,cancel){
+  const rec=vPts.get(e.pointerId);
+  if(!rec)return;
+  vPts.delete(e.pointerId);
+  const moved=(vPan&&vPan.moved)||(vPinch&&vPinch.moved);
+  /* 双击缩放（触摸）：同一位置 320ms 内两次轻点 */
+  if(!cancel&&!moved&&e.pointerType==='touch'&&vPts.size===0&&Date.now()-rec.t<300){
+    const now=Date.now();
+    vPan=null;vPinch=null;
+    if(now-vLastTap.t<320&&Math.hypot(e.clientX-vLastTap.x,e.clientY-vLastTap.y)<44){
+      vLastTap={t:0,x:0,y:0};vLastDblTouch=now;suppressVClick=now+400;vToggleZoom(e.clientX,e.clientY);
+    }else{
+      vLastTap={t:now,x:e.clientX,y:e.clientY};
+    }
+    return;
+  }
+  if(vPinch){
+    if(vPts.size>=2)return;
+    const p=vPinch;vPinch=null;
+    if(p.moved)suppressVClick=Date.now()+400;
+    if(vZ.s<1)vAnimateTo(1,0,0,240);                    /* 比正常小 → 弹回正常大小 */
+    else if(vZ.s>1){
+      const c=vClamp(vZ.s,vZ.tx,vZ.ty);
+      if(Math.abs(c.tx-vZ.tx)>0.5||Math.abs(c.ty-vZ.ty)>0.5)vAnimateTo(vZ.s,c.tx,c.ty,180);
+    }else{vZ={s:1,tx:0,ty:0};vApply();}
+    if(vPts.size===1&&vZ.s>1){                          /* 松开一根手指：剩下那根无缝接管平移，不跳 */
+      const q=[...vPts.values()][0];
+      vPan={mode:'pan',geom:vGeom(),startX:q.x,startY:q.y,lastX:q.x,lastY:q.y,lastT:Date.now(),vx:0,moved:true};
+    }
+    return;
+  }
+  const p=vPan;if(!p)return;
+  vPan=null;
+  if(p.mode==='swipe'){
+    /* 原始大小：沿用原翻页阈值（位移 >1/4 屏宽 或 速度 >0.5px/ms） */
+    const w=viewer.clientWidth;
+    const dx=e.clientX-p.x;
+    const dt=Math.max(Date.now()-p.lastT,1);
+    const vx=(e.clientX-p.lastX)/dt;
+    let target=vIdx;
+    if(p.moved&&p.horiz){
+      if(dx<-w/4||(vx<-0.5&&dx<0))target=vIdx+1;
+      else if(dx>w/4||(vx>0.5&&dx>0))target=vIdx-1;
+    }
+    if(target<0)target=0;
+    if(target>=vList.length)target=vList.length-1;
+    if(p.moved)suppressVClick=Date.now()+400;
+    setVIdx(target,true);
+    return;
+  }
+  /* 放大状态松手：拖到图片边缘后继续拖的真实越界量，按同一套阈值决定是否翻页 */
+  const g=p.geom||vGeom();
+  const rawTx=(p.rawTx===undefined?vZ.tx:p.rawTx);
+  const rawTy=(p.rawTy===undefined?vZ.ty:p.rawTy);
+  const c=vClamp(vZ.s,rawTx,rawTy,g);
+  const rawX=rawTx-c.tx;
+  const w=viewer.clientWidth;
+  let dir=0;
+  if(p.moved){
+    if(rawX<-w/4||(p.vx<-0.5&&rawX<0))dir=1;
+    else if(rawX>w/4||(p.vx>0.5&&rawX>0))dir=-1;
+  }
+  if(dir&&vIdx+dir>=0&&vIdx+dir<vList.length){
+    suppressVClick=Date.now()+400;
+    setVIdx(vIdx+dir,true);                             /* 翻页后新图回正常大小 */
+  }else if(Math.abs(c.tx-vZ.tx)>0.5||Math.abs(c.ty-vZ.ty)>0.5){
+    vAnimateTo(vZ.s,c.tx,c.ty,180);                     /* 没到阈值 → 回到当前图片边界内 */
+  }
+}
+/* 电脑端：滚轮以鼠标位置为中心缩放 */
+viewer.addEventListener('wheel',e=>{
+  if(!viewer.classList.contains('show')||!vImgEl())return;
+  e.preventDefault();
+  vZoomAt(e.clientX,e.clientY,vZ.s*Math.exp(-e.deltaY*0.0018),null,false,1);
+},{passive:false});
+/* 电脑端：双击放大/还原（触屏已自行处理，忽略合成事件） */
+viewer.addEventListener('dblclick',e=>{
+  if(!viewer.classList.contains('show')||!vImgEl())return;
+  if(e.target.closest('button'))return;
+  if(Date.now()-vLastDblTouch<700)return;
+  e.preventDefault();
+  vToggleZoom(e.clientX,e.clientY);
+});
 /* 点击：点图片不关，点空白关闭 */
 viewer.addEventListener('click',e=>{
   if(Date.now()<suppressVClick)return;
